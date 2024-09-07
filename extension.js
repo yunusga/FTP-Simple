@@ -1,6 +1,16 @@
 'use strict';
+
 var vscode = require('vscode');
+
 var fs = require('fs');
+
+const {
+  existsSync,
+  writeFileSync,
+  mkdirSync,
+  readFileSync,
+} = require('fs');
+
 //var fse = require('fs-extra');
 var loop = require('easy-loop');
 var minimatch = require('minimatch');
@@ -9,7 +19,6 @@ var pathUtil = require('./lib/path-util');
 var fileUtil = require('./lib/file-util');
 var commonUtil = require('./lib/common-util');
 var vsUtil = require('./lib/vs-util');
-var cryptoUtil = require('./lib/crypto-util');
 var EasyFTP = require('easy-ftp');
 var chokidar = require('chokidar');
 var outputChannel = null;
@@ -55,6 +64,11 @@ function moveOldConfigFile() {
 
 function activate(context) {
   vsUtil.setContext(context);
+
+  if (!existsSync(context.globalStoragePath)) {
+    mkdirSync(context.globalStoragePath);
+  }
+
   var subscriptions = [];
   outputChannel = vsUtil.getOutputChannel("ftp-simple");
   REMOTE_WORKSPACE_TEMP_PATH = getRemoteWorkSpaceTempPath();
@@ -970,15 +984,9 @@ function setDefaultConfig(config) {
   return config;
 }
 function writeConfigFile(json) {
-  fileUtil.writeFileSync(CONFIG_PATH, cryptoUtil.encrypt(JSON.stringify(json, null, '\t')));
+  writeFileSync(CONFIG_PATH, JSON.stringify(json, null, '\t'));
   fileUtil.rm(CONFIG_PATH_TEMP);
 }
-
-const {
-  existsSync,
-  writeFileSync,
-  readFileSync,
-} = require('fs');
 
 function initConfig() {
   let json = JSON.stringify(
@@ -987,10 +995,10 @@ function initConfig() {
     '\t'
   );
 
-  if (existsSync(CONFIG_PATH_TEMP)) {
-    json = readFileSync(CONFIG_PATH_TEMP).toString();
+  if (existsSync(CONFIG_PATH)) {
+    json = readFileSync(CONFIG_PATH).toString();
   } else {
-    writeFileSync(CONFIG_PATH_TEMP, json);
+    writeFileSync(CONFIG_PATH, json);
   }
 
   return {
@@ -1685,7 +1693,7 @@ function updateToRemoteTempPath(remoteTempPath, existCheck, cb) {
     });
   }
   else if (CONFIG_PATH_TEMP == remoteTempPath) {
-    var val = fs.readFileSync(CONFIG_PATH_TEMP).toString();
+    var val = readFileSync(CONFIG_PATH_TEMP).toString();
     try {
       val = JSON.parse(val);
       writeConfigFile(val);
