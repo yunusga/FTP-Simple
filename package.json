@@ -2,7 +2,7 @@
   "name": "ftp-simple",
   "displayName": "ftp-simple",
   "description": "Simple FTP/SFTP",
-  "version": "1.0.0-hotfix",
+  "version": "1.0.1-hotfix",
   "publisher": "yunusga",
   "engines": {
     "vscode": "^1.93.0"
@@ -22,10 +22,10 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/humy2833/FTP-Simple.git"
+    "url": "https://github.com/yunusga/FTP-Simple.git"
   },
   "bugs": {
-    "url": "https://github.com/humy2833/FTP-Simple/issues"
+    "url": "https://github.com/yunusga/FTP-Simple/issues"
   },
   "icon": "logo.png",
   "activationEvents": [
