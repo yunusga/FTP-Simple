@@ -2,7 +2,7 @@
   "name": "ftp-simple",
   "displayName": "ftp-simple",
   "description": "Simple FTP/SFTP",
-  "version": "1.0.1-hotfix",
+  "version": "1.0.2-hotfix",
   "publisher": "yunusga",
   "engines": {
     "vscode": "^1.93.0"

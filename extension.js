@@ -34,6 +34,8 @@ const CONFIG_FTP_WORKSPACE_TEMP = "remote-workspace-temp";
 let CONFIG_PATH, CONFIG_PATH_TEMP, WAIT_COPY_PATH, REMOTE_WORKSPACE_TEMP_PATH;
 const REMOTE_TEMP_PATHS = {};
 
+let statusBarItem = null;
+
 function getRemoteWorkSpaceTempPath() {
   return ((function () {
     let p = vsUtil.getConfiguration('ftp-simple.remote-workspace');
@@ -83,6 +85,46 @@ function activate(context) {
 
   setRefreshRemoteTimer(true);
   //startWatch();
+
+  /**
+   * Status Bar Item
+   */
+  statusBarItem = new function() {
+    this.item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
+
+    this.item.name = 'FTP-Simple indicator';
+    this.item.text = '$(remote-explorer) FTPS';
+
+    this.item.show();
+
+    this.name = '';
+
+    this.text = function(text) {
+      this.item.text = `$(remote-explorer) ${this.name} ${text}`;
+    }
+
+    this.status = function() {
+      this.item.text = `$(remote-explorer) ${this.name}`;
+    }
+
+    this.indicator = function(name) {
+      this.item.text = `$(remote-explorer) ${name}`;
+    }
+
+    this.connecting = function(name) {
+      this.item.text = `$(sync~spin) ${name} connecting...`;
+    }
+
+    this.opened = function(name) {
+      this.item.text = `$(sync~spin) ${name} open`;
+    }
+
+    this.updating = function(name) {
+      this.item.text = `$(sync~spin) ${name} updating...`;
+    }
+  };
+
+  subscriptions.push(statusBarItem.item);
 
   vscode.workspace.onDidSaveTextDocument(function (event) {
     // console.log("onDidSaveTextDocument 파일 저장 : ", event, vsUtil.getActiveFilePathAll(), event.fileName, Date.now());
@@ -870,11 +912,25 @@ function createFTP(ftpConfig, cb, failCount) {
         var count = failCount || 0;
         //var ftp = new EasyFTP();
         output(ftpConfig.name + " - " + "FTP Connecting...");
+
+        statusBarItem.connecting(ftpConfig.name);
+
         try { ftp.connect(ftpConfig, ftpConfig.parallel ? ftpConfig.parallel : 1); } catch (e) { console.log("catch : ", e); }
         ftp.on("open", function () {
           count = TRY;
           output(ftpConfig.name + " - " + "FTP open!!");
-          if (alreadyConnect) vsUtil.msg(ftpConfig.name + " - FTP reopen!!");
+
+          statusBarItem.text(`${ftpConfig.name} open!!`);
+
+          if (alreadyConnect) {
+            vsUtil.msg(ftpConfig.name + " - FTP reopen!!");
+
+            statusBarItem.opened(ftpConfig.name);
+          }
+
+          setTimeout(() => {
+            statusBarItem.indicator(ftpConfig.name);
+          }, 1000);
           //addFTP(ftpConfig.host, ftp);
           if (cb) cb(ftp);
         });
@@ -1095,8 +1151,17 @@ function getSelectedFTPConfig(cb) {
       return;
     }
     vsUtil.pick(ftps, "Select FTP server", function (name) {
-      if (cb) cb(getFTPConfig(ftpsConfig, name));
-      else resolve(getFTPConfig(ftpsConfig, name));
+      let config = getFTPConfig(ftpsConfig, name);
+
+      statusBarItem.name = config.name;
+
+      console.log('Select FTP server');
+
+      if (cb) {
+        cb(getFTPConfig(ftpsConfig, name));
+      } else {
+        resolve(getFTPConfig(ftpsConfig, name));
+      }
     });
   });
 }
@@ -1355,8 +1420,12 @@ function isCurrentWorkspace(ftpConfig, remotePath) {
 function downloadRemoteWorkspace(ftp, ftpConfig, remotePath, cb, notMsg, notRecursive) {
   var localPath = getRemoteWorkspace(ftpConfig, remotePath);
   //if(fileUtil.existSync(localPath)) fileUtil.rmSync(localPath);
-  if (!notMsg) vsUtil.msg("Please wait......Remote Info downloading... You can see 'output console'");
+  if (!notMsg) {
+    vsUtil.msg("Please wait......Remote Info downloading... You can see 'output console'")
+  };
   //vsUtil.msg("Please wait......Remote Info downloading... You can see 'output console'");
+
+  statusBarItem.updating(ftpConfig.name);
 
   addJob(function (next) {
     stopWatch();
@@ -1517,6 +1586,9 @@ function autoRefreshRemoteTempFiles(notMsg, loadAll, cb) {
         //console.log("loadAll-autoRefreshRemoteTempFiles : ", loadAll);
         downloadRemoteWorkspace(ftp, ftpConfigFromTempDir.config, ftpConfigFromTempDir.path, function () {
           if (!notMsg) vsUtil.msg("Remote Info downloading success.");
+
+          statusBarItem.indicator();
+
           if (cb) cb();
         }, notMsg, loadAll);
       });
