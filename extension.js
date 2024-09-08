@@ -1,6 +1,16 @@
 'use strict';
+
 var vscode = require('vscode');
+
 var fs = require('fs');
+
+const {
+  existsSync,
+  writeFileSync,
+  mkdirSync,
+  readFileSync,
+} = require('fs');
+
 //var fse = require('fs-extra');
 var loop = require('easy-loop');
 var minimatch = require('minimatch');
@@ -9,7 +19,6 @@ var pathUtil = require('./lib/path-util');
 var fileUtil = require('./lib/file-util');
 var commonUtil = require('./lib/common-util');
 var vsUtil = require('./lib/vs-util');
-var cryptoUtil = require('./lib/crypto-util');
 var EasyFTP = require('easy-ftp');
 var chokidar = require('chokidar');
 var outputChannel = null;
@@ -24,6 +33,8 @@ const CONFIG_NAME = "ftp-simple.json";
 const CONFIG_FTP_WORKSPACE_TEMP = "remote-workspace-temp";
 let CONFIG_PATH, CONFIG_PATH_TEMP, WAIT_COPY_PATH, REMOTE_WORKSPACE_TEMP_PATH;
 const REMOTE_TEMP_PATHS = {};
+
+let statusBarItem = null;
 
 function getRemoteWorkSpaceTempPath() {
   return ((function () {
@@ -55,6 +66,11 @@ function moveOldConfigFile() {
 
 function activate(context) {
   vsUtil.setContext(context);
+
+  if (!existsSync(context.globalStoragePath)) {
+    mkdirSync(context.globalStoragePath);
+  }
+
   var subscriptions = [];
   outputChannel = vsUtil.getOutputChannel("ftp-simple");
   REMOTE_WORKSPACE_TEMP_PATH = getRemoteWorkSpaceTempPath();
@@ -68,14 +84,54 @@ function activate(context) {
   // destroy(true);
 
   setRefreshRemoteTimer(true);
-  //startWatch();  
+  //startWatch();
+
+  /**
+   * Status Bar Item
+   */
+  statusBarItem = new function() {
+    this.item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
+
+    this.item.name = 'FTP-Simple indicator';
+    this.item.text = '$(remote-explorer) FTPS';
+
+    this.item.show();
+
+    this.name = '';
+
+    this.text = function(text) {
+      this.item.text = `$(remote-explorer) ${this.name} ${text}`;
+    }
+
+    this.status = function() {
+      this.item.text = `$(remote-explorer) ${this.name}`;
+    }
+
+    this.indicator = function(name) {
+      this.item.text = `$(remote-explorer) ${name}`;
+    }
+
+    this.connecting = function(name) {
+      this.item.text = `$(sync~spin) ${name} connecting...`;
+    }
+
+    this.opened = function(name) {
+      this.item.text = `$(sync~spin) ${name} open`;
+    }
+
+    this.updating = function(name) {
+      this.item.text = `$(sync~spin) ${name} updating...`;
+    }
+  };
+
+  subscriptions.push(statusBarItem.item);
 
   vscode.workspace.onDidSaveTextDocument(function (event) {
     // console.log("onDidSaveTextDocument 파일 저장 : ", event, vsUtil.getActiveFilePathAll(), event.fileName, Date.now());
     updateToRemoteTempPath(event.fileName);
   });
   vscode.workspace.onDidCloseTextDocument(function (event) {
-    //console.log("파일 닫기0 : ", event); 
+    //console.log("파일 닫기0 : ", event);
     //파일 닫을때, 파일 형식 바뀔때
     // console.log("onDidCloseTextDocument 파일 닫을때 : ", event, vsUtil.getActiveFilePathAll(), event.fileName, Date.now());
     var remoteTempPath = pathUtil.normalize(event.fileName);
@@ -476,7 +532,7 @@ function activate(context) {
               return isInput = /[\\|*?<>:"]/.test(value) ? true : null;
           }
         }).then(function(name){
-          if(name) 
+          if(name)
           {
             var parent = path;
             var realName = name;
@@ -486,18 +542,18 @@ function activate(context) {
               realName = pathUtil.getFileName(name);
             }
             exist(ftp, parent, realName, function(result){
-              if(result) 
+              if(result)
               {
                 vsUtil.error("Already exist directory '"+name+"'", "Rename")
                 .then(function(btn){
                   if(btn) create(ftp, path, name);
                 });
               }
-              else 
+              else
               {
                 var p = pathUtil.join(path, name);
                 ftp.mkdir(p, function(err){
-                  if(!err) 
+                  if(!err)
                   {
                     output("Create directory : " + p);
                     selectFirst(path);
@@ -506,9 +562,9 @@ function activate(context) {
               }
             });
           }
-          else 
+          else
           {
-            if(isInput) 
+            if(isInput)
             {
               vsUtil.error("Filename to include inappropriate words.");
               create(ftp, path);
@@ -544,7 +600,7 @@ function activate(context) {
     var localFilePath = vsUtil.getActiveFilePathAndMsg(item, "Please select a file to upload");
     //console.log("localFilePath:",localFilePath);
     var workspacePath = vsUtil.getWorkspacePath();
-    // if(item === null && workspacePath) 
+    // if(item === null && workspacePath)
     // {
     //   localFilePath = workspacePath;
     //   isForceUpload = true;
@@ -856,11 +912,25 @@ function createFTP(ftpConfig, cb, failCount) {
         var count = failCount || 0;
         //var ftp = new EasyFTP();
         output(ftpConfig.name + " - " + "FTP Connecting...");
+
+        statusBarItem.connecting(ftpConfig.name);
+
         try { ftp.connect(ftpConfig, ftpConfig.parallel ? ftpConfig.parallel : 1); } catch (e) { console.log("catch : ", e); }
         ftp.on("open", function () {
           count = TRY;
           output(ftpConfig.name + " - " + "FTP open!!");
-          if (alreadyConnect) vsUtil.msg(ftpConfig.name + " - FTP reopen!!");
+
+          statusBarItem.text(`${ftpConfig.name} open!!`);
+
+          if (alreadyConnect) {
+            vsUtil.msg(ftpConfig.name + " - FTP reopen!!");
+
+            statusBarItem.opened(ftpConfig.name);
+          }
+
+          setTimeout(() => {
+            statusBarItem.indicator(ftpConfig.name);
+          }, 1000);
           //addFTP(ftpConfig.host, ftp);
           if (cb) cb(ftp);
         });
@@ -970,53 +1040,29 @@ function setDefaultConfig(config) {
   return config;
 }
 function writeConfigFile(json) {
-  fileUtil.writeFileSync(CONFIG_PATH, cryptoUtil.encrypt(JSON.stringify(json, null, '\t')));
+  writeFileSync(CONFIG_PATH, JSON.stringify(json, null, '\t'));
   fileUtil.rm(CONFIG_PATH_TEMP);
 }
+
 function initConfig() {
-  var result = true;
-  var json = vsUtil.getConfig(CONFIG_NAME);
-  try {
-    json = cryptoUtil.decrypt(json);
-    json = JSON.parse(json);
-  } catch (e) {
-    //암호화 안된 파일일때
-    try {
-      json = JSON.parse(json);
-      writeConfigFile(json);
-    } catch (ee) {
-      if (json === undefined) {
-        //설정 없을때
-        json = [{ name: "localhost", host: "", port: 21, type: "ftp", username: "", password: "", path: "/" }];
-        writeConfigFile(json);
-      } else {
-        vsUtil.error("Check Simple-FTP config file syntax.");
-        fileUtil.writeFile(CONFIG_PATH_TEMP, json, function () {
-          vsUtil.openTextDocument(CONFIG_PATH_TEMP);
-        });
-        result = false;
-      }
-    }
+  let json = JSON.stringify(
+    [{ name: 'localhost', host: '', port: 21, type: 'ftp', username: '', password: '', path: '/' }],
+    null,
+    '\t'
+  );
+
+  if (existsSync(CONFIG_PATH)) {
+    json = readFileSync(CONFIG_PATH).toString();
+  } else {
+    writeFileSync(CONFIG_PATH, json);
   }
-  json = setDefaultConfig(json);
-  return { result: result, json: json };
-  /*
-  try{
-    var json = vsUtil.getConfig(CONFIG_NAME, JSON.parse);
-    if(json === undefined){
-      json = [{name:"localhost", host:"", port:21, type:"ftp", username:"", password:"", path:"/"}];
-      var str = JSON.stringify(json, null, "\t");
-      fs.writeFileSync(CONFIG_PATH, cryptoUtil.encrypt(str));
-    }
-    json = setDefaultConfig(json);
-  }catch(e){
-    //console.log(e);
-    vsUtil.msg("Check config file syntax.");
-    result = false;
-  }
-  return {result:result, json:json};
-  */
+
+  return {
+    result: true,
+    json: JSON.parse(json),
+  };
 }
+
 function getConfig() {
   var json = {};
   var config = initConfig();
@@ -1105,8 +1151,17 @@ function getSelectedFTPConfig(cb) {
       return;
     }
     vsUtil.pick(ftps, "Select FTP server", function (name) {
-      if (cb) cb(getFTPConfig(ftpsConfig, name));
-      else resolve(getFTPConfig(ftpsConfig, name));
+      let config = getFTPConfig(ftpsConfig, name);
+
+      statusBarItem.name = config.name;
+
+      console.log('Select FTP server');
+
+      if (cb) {
+        cb(getFTPConfig(ftpsConfig, name));
+      } else {
+        resolve(getFTPConfig(ftpsConfig, name));
+      }
     });
   });
 }
@@ -1365,8 +1420,12 @@ function isCurrentWorkspace(ftpConfig, remotePath) {
 function downloadRemoteWorkspace(ftp, ftpConfig, remotePath, cb, notMsg, notRecursive) {
   var localPath = getRemoteWorkspace(ftpConfig, remotePath);
   //if(fileUtil.existSync(localPath)) fileUtil.rmSync(localPath);
-  if (!notMsg) vsUtil.msg("Please wait......Remote Info downloading... You can see 'output console'");
+  if (!notMsg) {
+    vsUtil.msg("Please wait......Remote Info downloading... You can see 'output console'")
+  };
   //vsUtil.msg("Please wait......Remote Info downloading... You can see 'output console'");
+
+  statusBarItem.updating(ftpConfig.name);
 
   addJob(function (next) {
     stopWatch();
@@ -1385,11 +1444,11 @@ function downloadRemoteWorkspace(ftp, ftpConfig, remotePath, cb, notMsg, notRecu
     // {
     //   cb();
     //   return;
-    // }    
+    // }
     ftp.ls(remotePath, function (err, remoteFileList) {
       if (err && cb) cb();
       else {
-        //if(remoteFileList.length > 0) 
+        //if(remoteFileList.length > 0)
         //{
         fileUtil.mkdirSync(localPath);
         //}
@@ -1469,7 +1528,7 @@ function downloadRemoteWorkspace(ftp, ftpConfig, remotePath, cb, notMsg, notRecu
                 fileUtil.stat(newFilePath, function(stat){
                   if(!stat)
                   {
-                    output("Remote info download : " + newFilePath); 
+                    output("Remote info download : " + newFilePath);
                     fileUtil.writeFile(newFilePath, "");
                   }
                 });
@@ -1527,6 +1586,9 @@ function autoRefreshRemoteTempFiles(notMsg, loadAll, cb) {
         //console.log("loadAll-autoRefreshRemoteTempFiles : ", loadAll);
         downloadRemoteWorkspace(ftp, ftpConfigFromTempDir.config, ftpConfigFromTempDir.path, function () {
           if (!notMsg) vsUtil.msg("Remote Info downloading success.");
+
+          statusBarItem.indicator();
+
           if (cb) cb();
         }, notMsg, loadAll);
       });
@@ -1703,7 +1765,7 @@ function updateToRemoteTempPath(remoteTempPath, existCheck, cb) {
     });
   }
   else if (CONFIG_PATH_TEMP == remoteTempPath) {
-    var val = fs.readFileSync(CONFIG_PATH_TEMP).toString();
+    var val = readFileSync(CONFIG_PATH_TEMP).toString();
     try {
       val = JSON.parse(val);
       writeConfigFile(val);
@@ -1750,7 +1812,7 @@ function startWatch() {
         });
       }
     }
-    
+
     // Handle new files
   });
   */
@@ -1779,7 +1841,7 @@ function startWatch() {
         }
       });
     }
-    
+
     // Handle removed files
   });
 
@@ -1819,7 +1881,7 @@ function startWatch() {
   watcher.on('unlink', (path) => {
     path = pathUtil.normalize(path);
     //fileUtil.exist(pathUtil.getParentPath(path), function(result){
-    //  if(result) 
+    //  if(result)
     //  {
         addJob(function(next){
           deleteToRemoteTempPath(path, function(){next();});

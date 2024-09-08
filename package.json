@@ -2,10 +2,10 @@
   "name": "ftp-simple",
   "displayName": "ftp-simple",
   "description": "Simple FTP/SFTP",
-  "version": "0.7.6",
-  "publisher": "humy2833",
+  "version": "1.0.2-hotfix",
+  "publisher": "yunusga",
   "engines": {
-    "vscode": "^0.10.10"
+    "vscode": "^1.93.0"
   },
   "keywords": [
     "ftp",
@@ -22,10 +22,10 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/humy2833/FTP-Simple.git"
+    "url": "https://github.com/yunusga/FTP-Simple.git"
   },
   "bugs": {
-    "url": "https://github.com/humy2833/FTP-Simple/issues"
+    "url": "https://github.com/yunusga/FTP-Simple/issues"
   },
   "icon": "logo.png",
   "activationEvents": [
@@ -192,6 +192,6 @@
     "minimatch": "^3.0.4"
   },
   "devDependencies": {
-    "vscode": "^1.1.37"
+    "vscode": "^1.93.0"
   }
 }
